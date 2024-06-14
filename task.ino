@@ -1,78 +1,51 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
-#include <DHT.h>
 
-// Pengaturan WiFi
-const char* ssid = "C42";
-const char* password = "0806040200";
+const char* ssid = "your_SSID";
+const char* password = "your_PASSWORD";
+const char* serverName = "http://your_local_server_address:port/api/sensor_data";
 
-// Pengaturan DHT11
-#define DHTPIN 4     // Pin yang terhubung ke DHT11
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-
-// URL server Flask
-const char* serverName = "https://0cd5w308ynnj.share.zrok.io/sensor/data";
+int sensorPin = A0; // Pin analog untuk sensor
 
 void setup() {
   Serial.begin(115200);
   WiFi.begin(ssid, password);
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    Serial.println("Menunggu koneksi ke WiFi...");
+    Serial.println("Connecting to WiFi...");
   }
-  dht.begin();
+
+  Serial.println("Connected to WiFi");
 }
 
 void loop() {
-  // Membaca kelembapan dan suhu
-  float humidity = dht.readHumidity();
-  float temperature = dht.readTemperature();
-  long timestamp = millis(); // Menggunakan waktu sejak ESP8266/ESP32 dihidupkan sebagai timestamp
-
-  // Periksa apakah pembacaan berhasil
-  if (isnan(humidity) || isnan(temperature)) {
-    Serial.println("Gagal membaca dari sensor DHT!");
-    return;
-  }
-
-  // Jika koneksi WiFi terputus, coba koneksi ulang
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.println("Menunggu koneksi ke WiFi...");
-    }
-  }
-
-  // Mengirim data ke server Flask
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
+
     http.begin(serverName);
     http.addHeader("Content-Type", "application/json");
-    
-    // Membuat JSON untuk dikirim
-    StaticJsonDocument<200> jsonDocument;
-    jsonDocument["temperature"] = temperature;
-    jsonDocument["humidity"] = humidity;
-    jsonDocument["timestamp"] = timestamp;
-    String httpRequestData;
-    serializeJson(jsonDocument, httpRequestData);
-    
-    int httpResponseCode = http.POST(httpRequestData);
 
-    // Cetak kode respons HTTP
+    int sensorValue = analogRead(sensorPin);
+    float temperature = sensorValue * (5.0 / 1023.0) * 100.0; // Contoh konversi sensor suhu
+
+    String postData = "{\"temperature\": " + String(temperature, 2) + "}";
+
+    int httpResponseCode = http.POST(postData);
+
     if (httpResponseCode > 0) {
       String response = http.getString();
       Serial.println(httpResponseCode);
       Serial.println(response);
-    }
-    else {
-      Serial.print("Error pada kode: ");
+    } else {
+      Serial.print("Error on sending POST: ");
       Serial.println(httpResponseCode);
     }
+
     http.end();
+  } else {
+    Serial.println("Error in WiFi connection");
   }
-  delay(2000); // Tunda 2 detik antara pengiriman
+
+  delay(60000); // Tunggu 60 detik sebelum membaca lagi
 }
